@@ -2,12 +2,12 @@ import React, { useState, useEffect } from "react";
 import { Link } from "react-router-dom";
 import { db, doc, getDoc } from "../firebase";
 import BillScanner from "../components/BillScanner";
-import { 
-  FaWallet, 
-  FaChartPie, 
-  FaMoneyBill, 
-  FaCalculator, 
-  FaRobot, 
+import {
+  FaWallet,
+  FaChartPie,
+  FaMoneyBill,
+  FaCalculator,
+  FaRobot,
   FaGraduationCap,
   FaArrowUp,
   FaArrowDown,
@@ -70,47 +70,95 @@ function Home({ user }) {
       // Fetch transactions
       const transactionsDocRef = doc(db, "transactions", user.uid);
       const transactionsDocSnap = await getDoc(transactionsDocRef);
+      let userTransactions = [];
+      let currentBalance = 0;
 
       if (transactionsDocSnap.exists()) {
-        const data = transactionsDocSnap.data();
-        setTotalAmount(data.totalAmount || 0);
-        const validTransactions = (data.transactions || []).filter(t => t.date);
-        setTransactions(validTransactions);
-        
+        const transactionData = transactionsDocSnap.data();
+        currentBalance = transactionData.totalAmount || 0;
+        setTotalAmount(currentBalance);
+        userTransactions = (transactionData.transactions || []).filter(t => t.date);
+        setTransactions(userTransactions);
+
         // Generate notifications based on spending patterns
-        generateNotifications(validTransactions, data.totalAmount || 0);
-        
-        // Simulate upcoming bills (in a real app, this would come from a bills collection)
-        simulateUpcomingBills(validTransactions);
+        generateNotifications(userTransactions, currentBalance);
       }
 
-      // Fetch and display budget as upcoming bills if exists
+      // Define category groups
+      const NEEDS_CATEGORIES = [
+        "Housing", "Utilities", "Groceries", "Transportation",
+        "Insurance", "Healthcare", "Minimum debt payments", "Childcare"
+      ];
+      const WANTS_CATEGORIES = [
+        "Dining out", "Entertainment", "Hobbies", "Clothing",
+        "Travel/vacations", "Personal care", "Gifts/subscriptions"
+      ];
+
+      // Fetch budget data and calculate spending
       try {
         const budgetDocRef = doc(db, "budgets", user.uid);
         const budgetDocSnap = await getDoc(budgetDocRef);
-        
+
         if (budgetDocSnap.exists()) {
           const budgetData = budgetDocSnap.data();
-          if (budgetData.categories && budgetData.categories.length > 0) {
-            // Convert budget categories to upcoming bills format
-            const budgetBills = budgetData.categories.slice(0, 3).map((cat, idx) => ({
-              id: `budget-${idx}`,
+          const categories = budgetData.categories || [];
+
+          // Calculate spending per category group
+          const spendingSummary = userTransactions.reduce((acc, t) => {
+            if (t.type === 'Expense') {
+              const catName = t.category || "Other";
+              if (NEEDS_CATEGORIES.some(c => catName.includes(c))) {
+                acc.needs += t.amount;
+              } else if (WANTS_CATEGORIES.some(c => catName.includes(c))) {
+                acc.wants += t.amount;
+              } else if (catName === "Investments") {
+                acc.savings += t.amount;
+              } else {
+                acc.wants += t.amount;
+              }
+            }
+            return acc;
+          }, { needs: 0, wants: 0, savings: 0 });
+
+          // Map budget planner split to tracker display
+          const updatedTracker = categories.map(cat => {
+            let spent = 0;
+            if (cat.name === "Needs") spent = spendingSummary.needs;
+            else if (cat.name === "Wants") spent = spendingSummary.wants;
+            else if (cat.name === "Savings") spent = spendingSummary.savings;
+
+            const amountLeft = cat.amount - spent;
+
+            return {
+              id: `budget-${cat.name}`,
               name: `Budget: ${cat.name}`,
               amount: cat.amount,
-              dueDate: new Date().toISOString().split('T')[0],
+              spent: spent,
+              amountLeft: amountLeft,
+              dueDate: new Date().toLocaleDateString("en-IN", { day: 'numeric', month: 'short' }),
               isBudget: true
+            };
+          });
+
+          setUpcomingBills(updatedTracker);
+
+          // Add over-budget notifications
+          const overBudgetCats = updatedTracker.filter(b => b.amountLeft < 0);
+          if (overBudgetCats.length > 0) {
+            const overBudgetMsgs = overBudgetCats.map(cat => ({
+              id: `alert-${cat.name}`,
+              type: 'warning',
+              message: `Alert: You have exceeded your ${cat.name.split(': ')[1] || cat.name} budget by ₹${Math.abs(cat.amountLeft).toLocaleString('en-IN')}!`,
+              time: 'Just now'
             }));
-            
-            // Combine with transaction-based bills, but prioritize budget bills
-            setUpcomingBills(prevBills => {
-              const nonBudgetBills = prevBills.filter(b => !b.isBudget);
-              return [...budgetBills, ...nonBudgetBills].slice(0, 4);
-            });
+            setNotifications(prev => [...overBudgetMsgs, ...prev]);
           }
+        } else {
+          setUpcomingBills([]);
         }
       } catch (budgetError) {
         console.error("Error fetching budget:", budgetError);
-        // Continue without budget, it's optional
+        setUpcomingBills([]);
       }
 
       setLoading(false);
@@ -129,7 +177,7 @@ function Home({ user }) {
   // Generate notifications based on spending patterns
   const generateNotifications = (transactions, currentBalance) => {
     const newNotifications = [];
-    
+
     // Check for low balance
     if (currentBalance < 1000) {
       newNotifications.push({
@@ -139,7 +187,7 @@ function Home({ user }) {
         time: 'Just now'
       });
     }
-    
+
     // Check for high spending rate
     const lastWeekTransactions = transactions.filter(t => {
       const transactionDate = new Date(t.date);
@@ -147,7 +195,7 @@ function Home({ user }) {
       weekAgo.setDate(weekAgo.getDate() - 7);
       return transactionDate > weekAgo && t.type === 'Expense';
     });
-    
+
     const weeklySpending = lastWeekTransactions.reduce((sum, t) => sum + t.amount, 0);
     if (weeklySpending > 5000) {
       newNotifications.push({
@@ -157,7 +205,7 @@ function Home({ user }) {
         time: 'Today'
       });
     }
-    
+
     // Check for income vs expense ratio
     const lastMonthIncome = transactions.filter(t => {
       const transactionDate = new Date(t.date);
@@ -165,14 +213,14 @@ function Home({ user }) {
       monthAgo.setMonth(monthAgo.getMonth() - 1);
       return transactionDate > monthAgo && t.type === 'Income';
     }).reduce((sum, t) => sum + t.amount, 0);
-    
+
     const lastMonthExpenses = transactions.filter(t => {
       const transactionDate = new Date(t.date);
       const monthAgo = new Date();
       monthAgo.setMonth(monthAgo.getMonth() - 1);
       return transactionDate > monthAgo && t.type === 'Expense';
     }).reduce((sum, t) => sum + t.amount, 0);
-    
+
     if (lastMonthIncome > 0 && (lastMonthExpenses / lastMonthIncome) > 0.8) {
       newNotifications.push({
         id: 3,
@@ -181,7 +229,7 @@ function Home({ user }) {
         time: 'Today'
       });
     }
-    
+
     // Add a positive notification if savings rate is good
     if (lastMonthIncome > 0 && (lastMonthExpenses / lastMonthIncome) < 0.6) {
       newNotifications.push({
@@ -191,58 +239,10 @@ function Home({ user }) {
         time: 'Today'
       });
     }
-    
+
     setNotifications(newNotifications);
   };
 
-  // Simulate upcoming bills (in a real app, this would come from a bills collection)
-  const simulateUpcomingBills = (transactions) => {
-    // Analyze past transactions to predict upcoming bills
-    const recurringExpenses = {};
-    
-    transactions.forEach(transaction => {
-      if (transaction.type === 'Expense') {
-        const date = new Date(transaction.date);
-        const dayOfMonth = date.getDate();
-        
-        if (!recurringExpenses[dayOfMonth]) {
-          recurringExpenses[dayOfMonth] = {
-            count: 1,
-            totalAmount: transaction.amount,
-            description: transaction.description || 'Recurring expense'
-          };
-        } else {
-          recurringExpenses[dayOfMonth].count += 1;
-          recurringExpenses[dayOfMonth].totalAmount += transaction.amount;
-        }
-      }
-    });
-    
-    // Find likely recurring bills (occurred at least 3 times on the same day)
-    const likelyBills = [];
-    const today = new Date();
-    
-    Object.entries(recurringExpenses).forEach(([day, data]) => {
-      if (data.count >= 2) {
-        const billDay = parseInt(day);
-        const nextOccurrence = new Date(today.getFullYear(), today.getMonth(), billDay);
-        
-        // If the bill day has already passed this month, show it for next month
-        if (billDay < today.getDate()) {
-          nextOccurrence.setMonth(nextOccurrence.getMonth() + 1);
-        }
-        
-        likelyBills.push({
-          id: billDay,
-          name: data.description,
-          amount: Math.round(data.totalAmount / data.count),
-          dueDate: nextOccurrence.toISOString().split('T')[0]
-        });
-      }
-    });
-    
-    setUpcomingBills(likelyBills.slice(0, 3)); // Show top 3 likely bills
-  };
 
   // Rotate quotes
   useEffect(() => {
@@ -273,7 +273,7 @@ function Home({ user }) {
     // Update local state with new transaction
     setTransactions(prev => [transaction, ...prev].sort((a, b) => new Date(b.date) - new Date(a.date)));
     setTotalAmount(prev => prev - transaction.amount); // Subtract expense from total
-    
+
     // Refresh data to ensure consistency
     fetchData();
   };
@@ -282,11 +282,11 @@ function Home({ user }) {
   const totalIncome = transactions
     .filter(t => t.type === "Income")
     .reduce((sum, t) => sum + t.amount, 0);
-    
+
   const totalExpense = transactions
     .filter(t => t.type === "Expense")
     .reduce((sum, t) => sum + t.amount, 0);
-    
+
   // Calculate balance from transactions instead of relying on stored totalAmount
   const calculatedBalance = totalIncome - totalExpense;
   const netIncome = totalIncome - totalExpense;
@@ -336,7 +336,7 @@ function Home({ user }) {
             </h1>
             <p className="text-emerald-600 text-lg">Your financial dashboard at a glance</p>
           </div>
-          <button 
+          <button
             onClick={handleRefresh}
             disabled={refreshing}
             className="flex items-center gap-2 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 font-medium py-2 px-4 rounded-xl transition-all disabled:opacity-50"
@@ -354,15 +354,14 @@ function Home({ user }) {
               <span>Notifications</span>
             </div>
             {notifications.map(notification => (
-              <div 
-                key={notification.id} 
-                className={`p-4 rounded-xl border-l-4 ${
-                  notification.type === 'warning' 
-                    ? 'bg-amber-50 border-amber-500 text-amber-800' 
-                    : notification.type === 'success'
+              <div
+                key={notification.id}
+                className={`p-4 rounded-xl border-l-4 ${notification.type === 'warning'
+                  ? 'bg-amber-50 border-amber-500 text-amber-800'
+                  : notification.type === 'success'
                     ? 'bg-green-50 border-green-500 text-green-800'
                     : 'bg-blue-50 border-blue-500 text-blue-800'
-                }`}
+                  }`}
               >
                 <div className="flex justify-between items-start">
                   <p>{notification.message}</p>
@@ -379,7 +378,7 @@ function Home({ user }) {
             <FaQuoteLeft className="text-amber-600 text-xl mb-2 mx-auto" />
             <p className="text-amber-800 text-lg italic font-medium">{quotes[currentQuote]}</p>
           </div>
-          
+
           <div className="bg-gradient-to-r from-emerald-100 to-emerald-200 border border-emerald-300 rounded-2xl p-6 shadow-lg">
             <div className="flex items-center justify-center mb-2">
               <FaLightbulb className="text-amber-600 text-xl mr-2" />
@@ -485,14 +484,14 @@ function Home({ user }) {
                 <FaMoneyBill className="mr-2 text-amber-600" />
                 Recent Transactions
               </h2>
-              <Link 
-                to="/transactions" 
+              <Link
+                to="/transactions"
                 className="text-emerald-700 hover:text-amber-600 text-sm font-medium"
               >
                 View All →
               </Link>
             </div>
-            
+
             {recentTransactions.length === 0 ? (
               <div className="text-center py-8">
                 <div className="bg-emerald-100 rounded-full p-4 w-16 h-16 flex items-center justify-center mx-auto mb-4">
@@ -504,16 +503,15 @@ function Home({ user }) {
             ) : (
               <div className="space-y-4">
                 {recentTransactions.map((transaction, index) => (
-                  <div 
-                    key={index} 
+                  <div
+                    key={index}
                     className="flex justify-between items-center p-4 bg-emerald-50 rounded-xl border border-emerald-200"
                   >
                     <div className="flex items-center">
-                      <div className={`p-3 rounded-full mr-4 ${
-                        transaction.type === "Income" 
-                          ? "bg-emerald-100 text-emerald-600" 
-                          : "bg-red-100 text-red-600"
-                      }`}>
+                      <div className={`p-3 rounded-full mr-4 ${transaction.type === "Income"
+                        ? "bg-emerald-100 text-emerald-600"
+                        : "bg-red-100 text-red-600"
+                        }`}>
                         {transaction.type === "Income" ? <FaArrowUp /> : <FaArrowDown />}
                       </div>
                       <div>
@@ -523,9 +521,8 @@ function Home({ user }) {
                         </p>
                       </div>
                     </div>
-                    <div className={`font-bold ${
-                      transaction.type === "Income" ? "text-emerald-700" : "text-red-700"
-                    }`}>
+                    <div className={`font-bold ${transaction.type === "Income" ? "text-emerald-700" : "text-red-700"
+                      }`}>
                       ₹{transaction.amount.toLocaleString("en-IN")}
                     </div>
                   </div>
@@ -534,47 +531,61 @@ function Home({ user }) {
             )}
           </div>
 
-          {/* Upcoming Bills */}
+          {/* Budget Tracker (Replaces Upcoming Bills) */}
           <div className="bg-white rounded-2xl shadow-lg border border-emerald-200 p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-bold text-emerald-800 flex items-center">
-                <FaCalendarAlt className="mr-2 text-amber-600" />
-                Upcoming Bills
+                <FaChartPie className="mr-2 text-amber-600" />
+                Budget Tracker
               </h2>
-              <Link 
-                to="/budget" 
+              <Link
+                to="/budget"
                 className="text-emerald-700 hover:text-amber-600 text-sm font-medium"
               >
-                Manage Bills →
+                Plan Budget →
               </Link>
             </div>
-            
+
             {upcomingBills.length === 0 ? (
               <div className="text-center py-8">
                 <div className="bg-emerald-100 rounded-full p-4 w-16 h-16 flex items-center justify-center mx-auto mb-4">
-                  <FaCalendarAlt className="text-emerald-600 text-2xl" />
+                  <FaCalculator className="text-emerald-600 text-2xl" />
                 </div>
-                <p className="text-emerald-700 font-medium mb-2">No upcoming bills detected</p>
-                <p className="text-emerald-600">We'll notify you when we detect recurring expenses</p>
+                <p className="text-emerald-700 font-medium mb-2">No budget set yet</p>
+                <p className="text-emerald-600">Head to the Budget Planner to get started!</p>
               </div>
             ) : (
               <div className="space-y-4">
                 {upcomingBills.map((bill) => (
-                  <div 
-                    key={bill.id} 
-                    className="flex justify-between items-center p-4 bg-amber-50 rounded-xl border border-amber-200"
+                  <div
+                    key={bill.id}
+                    className="p-4 bg-amber-50 rounded-xl border border-amber-200"
                   >
-                    <div>
-                      <p className="font-medium text-amber-800">{bill.name}</p>
-                      <p className="text-sm text-amber-600">
-                        Due: {new Date(bill.dueDate).toLocaleDateString("en-IN", { 
-                          day: 'numeric', 
-                          month: 'short' 
-                        })}
-                      </p>
+                    <div className="flex justify-between items-start mb-2">
+                      <div>
+                        <p className="font-bold text-amber-800">{bill.name}</p>
+                        <p className="text-xs text-amber-600">
+                          Period: {new Date().toLocaleString('en-IN', { month: 'long' })}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-xs text-amber-600 opacity-75">Spent / Limit</p>
+                        <p className="font-bold text-amber-700">
+                          ₹{bill.spent.toLocaleString("en-IN")} / ₹{bill.amount.toLocaleString("en-IN")}
+                        </p>
+                        <p className={`text-[10px] font-bold ${bill.amountLeft < 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                          {bill.amountLeft < 0 ? 'Over' : 'Left'}: ₹{Math.abs(bill.amountLeft).toLocaleString("en-IN")}
+                        </p>
+                      </div>
                     </div>
-                    <div className="font-bold text-amber-700">
-                      ₹{bill.amount.toLocaleString("en-IN")}
+                    {/* Progress Bar */}
+                    <div className="w-full bg-amber-100 rounded-full h-2 overflow-hidden shadow-inner">
+                      <div
+                        className={`h-full transition-all duration-1000 ${(bill.spent / bill.amount) > 1 ? 'bg-red-500' :
+                          (bill.spent / bill.amount) > 0.8 ? 'bg-orange-500' : 'bg-emerald-500'
+                          }`}
+                        style={{ width: `${Math.min(100, (bill.spent / bill.amount) * 100)}%` }}
+                      ></div>
                     </div>
                   </div>
                 ))}
@@ -585,8 +596,8 @@ function Home({ user }) {
 
         {/* Quick Access Cards */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <Link 
-            to="/transactions" 
+          <Link
+            to="/transactions"
             className="bg-gradient-to-br from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white rounded-2xl p-6 shadow-lg transition-all transform hover:-translate-y-1"
           >
             <div className="flex items-center mb-4">
@@ -598,8 +609,8 @@ function Home({ user }) {
             <p className="text-emerald-100 text-sm">Manage your income and expenses</p>
           </Link>
 
-          <Link 
-            to="/dashboard" 
+          <Link
+            to="/dashboard"
             className="bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white rounded-2xl p-6 shadow-lg transition-all transform hover:-translate-y-1"
           >
             <div className="flex items-center mb-4">
@@ -611,8 +622,8 @@ function Home({ user }) {
             <p className="text-blue-100 text-sm">View financial insights and charts</p>
           </Link>
 
-          <Link 
-            to="/budget" 
+          <Link
+            to="/budget"
             className="bg-gradient-to-br from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-2xl p-6 shadow-lg transition-all transform hover:-translate-y-1"
           >
             <div className="flex items-center mb-4">
@@ -624,8 +635,8 @@ function Home({ user }) {
             <p className="text-amber-100 text-sm">Create and manage your budget</p>
           </Link>
 
-          <Link 
-            to="/calculator" 
+          <Link
+            to="/calculator"
             className="bg-gradient-to-br from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white rounded-2xl p-6 shadow-lg transition-all transform hover:-translate-y-1"
           >
             <div className="flex items-center mb-4">
@@ -640,8 +651,8 @@ function Home({ user }) {
 
         {/* Additional Tools */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-          <Link 
-            to="/chatbot" 
+          <Link
+            to="/chatbot"
             className="bg-white rounded-2xl shadow-lg border border-emerald-200 p-6 hover:shadow-xl transition-all transform hover:-translate-y-1"
           >
             <div className="flex items-center mb-4">
@@ -653,8 +664,8 @@ function Home({ user }) {
             <p className="text-emerald-600 text-sm">Get financial advice from our AI assistant</p>
           </Link>
 
-          <Link 
-            to="/education" 
+          <Link
+            to="/education"
             className="bg-white rounded-2xl shadow-lg border border-emerald-200 p-6 hover:shadow-xl transition-all transform hover:-translate-y-1"
           >
             <div className="flex items-center mb-4">
@@ -666,8 +677,8 @@ function Home({ user }) {
             <p className="text-emerald-600 text-sm">Learn with bite-sized financial videos</p>
           </Link>
 
-          <Link 
-            to="/about" 
+          <Link
+            to="/about"
             className="bg-white rounded-2xl shadow-lg border border-emerald-200 p-6 hover:shadow-xl transition-all transform hover:-translate-y-1"
           >
             <div className="flex items-center mb-4">
@@ -680,7 +691,7 @@ function Home({ user }) {
           </Link>
         </div>
 
-        
+
       </div>
 
       {/* Bill Scanner Modal */}
