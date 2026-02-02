@@ -10,11 +10,34 @@ function BudgetPlanner({ user }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [activeButton, setActiveButton] = useState(null);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customRatios, setCustomRatios] = useState({ needs: 50, wants: 30, savings: 20 });
 
   const plans = [
-    { id: 1, ratio: [3, 4, 3], names: ["Wants", "Needs", "Savings"], color: "emerald" },
-    { id: 2, ratio: [2, 3, 5], names: ["Wants", "Needs", "Savings"], color: "amber" },
-    { id: 3, ratio: [6, 2, 2], names: ["Wants", "Needs", "Savings"], color: "emerald" },
+    {
+      id: 1,
+      ratio: [50, 30, 20],
+      names: ["Needs", "Wants", "Savings"],
+      color: "emerald",
+      title: "50/30/20 Rule",
+      description: "Simple starter for broad balance. Best for beginners focusing on basics and emergency funds."
+    },
+    {
+      id: 2,
+      ratio: [40, 30, 30],
+      names: ["Needs", "Wants", "Savings"],
+      color: "amber",
+      title: "40/30/30 Rule",
+      description: "The golden ratio. Perfect balance between current lifestyle and steady future growth."
+    },
+    {
+      id: 3,
+      ratio: [30, 30, 40],
+      names: ["Needs", "Wants", "Savings"],
+      color: "emerald",
+      title: "30/30/40 Rule",
+      description: "Aggressive wealth building. Ideal for rapid debt payoff and maximizing investments."
+    },
   ];
 
   // Button animation handler
@@ -47,7 +70,7 @@ function BudgetPlanner({ user }) {
       amber: ["amber-500", "yellow-500", "orange-500"],
       purple: ["purple-500", "indigo-500", "pink-500"]
     };
-    
+
     setCategories(
       plan.ratio.map((perc, index) => ({
         id: index + 1,
@@ -96,7 +119,7 @@ function BudgetPlanner({ user }) {
 
       setError(null);
       alert("Budget saved successfully! Upcoming bills will update shortly.");
-      
+
       // Reset form after successful save
       setTimeout(() => {
         setStep("plan");
@@ -109,6 +132,62 @@ function BudgetPlanner({ user }) {
       console.error("Budget save error:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCustomPlanApply = () => {
+    const total = Number(customRatios.needs) + Number(customRatios.wants) + Number(customRatios.savings);
+    if (total !== 100) {
+      setError(`Total must be 100% (currently ${total}%)`);
+      return;
+    }
+
+    const plan = {
+      id: 'custom',
+      ratio: [customRatios.needs, customRatios.wants, customRatios.savings],
+      names: ["Needs", "Wants", "Savings"],
+      color: "emerald", // or a special color
+      title: "Custom Expert Plan",
+      description: `Custom ${customRatios.needs}/${customRatios.wants}/${customRatios.savings} ratio tailored to your specific financial goals.`
+    };
+
+    handlePlanSelect(plan);
+    setShowCustomModal(false);
+    setError(null);
+  };
+
+  const handleRatioChange = (key, val) => {
+    let newValue = parseInt(val);
+    if (isNaN(newValue)) newValue = 0;
+
+    const needs = Number(customRatios.needs);
+    const wants = Number(customRatios.wants);
+    const savings = Number(customRatios.savings);
+
+    if (key === "needs") {
+      // Changing Needs: Adjust Savings, keep Wants same
+      newValue = Math.min(100 - wants, Math.max(0, newValue));
+      setCustomRatios({
+        needs: newValue,
+        wants: wants,
+        savings: 100 - newValue - wants
+      });
+    } else if (key === "wants") {
+      // Changing Wants: Adjust Savings, keep Needs same
+      newValue = Math.min(100 - needs, Math.max(0, newValue));
+      setCustomRatios({
+        needs: needs,
+        wants: newValue,
+        savings: 100 - needs - newValue
+      });
+    } else if (key === "savings") {
+      // Changing Savings: Adjust Wants, keep Needs same
+      newValue = Math.min(100 - needs, Math.max(0, newValue));
+      setCustomRatios({
+        needs: needs,
+        wants: 100 - needs - newValue,
+        savings: newValue
+      });
     }
   };
 
@@ -138,9 +217,8 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
             handleNumber(num.toString());
             handleButtonAnimation(`num-${num}`);
           }}
-          className={`p-3 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-800 font-bold text-lg transition-all transform active:scale-95 ${
-            activeButton === `num-${num}` ? 'scale-95 bg-emerald-100' : ''
-          }`}
+          className={`p-3 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-800 font-bold text-lg transition-all transform active:scale-95 ${activeButton === `num-${num}` ? 'scale-95 bg-emerald-100' : ''
+            }`}
         >
           {num}
         </button>
@@ -150,9 +228,8 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
           handleClear();
           handleButtonAnimation('clear');
         }}
-        className={`p-3 bg-red-100 rounded-lg hover:bg-red-200 text-red-700 font-medium text-sm transition-all transform active:scale-95 ${
-          activeButton === 'clear' ? 'scale-95 bg-red-200' : ''
-        }`}
+        className={`p-3 bg-red-100 rounded-lg hover:bg-red-200 text-red-700 font-medium text-sm transition-all transform active:scale-95 ${activeButton === 'clear' ? 'scale-95 bg-red-200' : ''
+          }`}
       >
         Clear
       </button>
@@ -161,9 +238,8 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
           handleNumber("0");
           handleButtonAnimation('num-0');
         }}
-        className={`p-3 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-800 font-bold text-lg transition-all transform active:scale-95 ${
-          activeButton === 'num-0' ? 'scale-95 bg-emerald-100' : ''
-        }`}
+        className={`p-3 bg-white border border-emerald-200 rounded-lg hover:bg-emerald-50 text-emerald-800 font-bold text-lg transition-all transform active:scale-95 ${activeButton === 'num-0' ? 'scale-95 bg-emerald-100' : ''
+          }`}
       >
         0
       </button>
@@ -172,9 +248,8 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
           handleBackspace();
           handleButtonAnimation('backspace');
         }}
-        className={`p-3 bg-emerald-100 rounded-lg hover:bg-emerald-200 text-emerald-700 flex items-center justify-center transition-all transform active:scale-95 ${
-          activeButton === 'backspace' ? 'scale-95 bg-emerald-200' : ''
-        }`}
+        className={`p-3 bg-emerald-100 rounded-lg hover:bg-emerald-200 text-emerald-700 flex items-center justify-center transition-all transform active:scale-95 ${activeButton === 'backspace' ? 'scale-95 bg-emerald-200' : ''
+          }`}
       >
         <FaBackspace className="w-4 h-4" />
       </button>
@@ -190,8 +265,18 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
       <div className="absolute bottom-10 right-10 opacity-20">
         <FaChartLine className="text-amber-400 text-6xl" />
       </div>
-      
-      <div className="bg-white rounded-2xl shadow-xl border border-emerald-200 p-6 max-w-4xl w-full relative overflow-hidden">
+
+      <div className="bg-white rounded-2xl shadow-xl border border-emerald-200 p-6 max-w-4xl w-full relative overflow-visible">
+        {/* Expert Mode Button */}
+        {step === "plan" && (
+          <button
+            onClick={() => setShowCustomModal(true)}
+            className="absolute top-4 right-4 text-[10px] font-bold text-emerald-400 hover:text-emerald-600 transition-colors uppercase tracking-widest flex items-center gap-1"
+          >
+            <FaCalculator className="w-2 h-2" />
+            Custom budget
+          </button>
+        )}
         {/* Header */}
         <div className="text-center mb-6">
           <h1 className="text-2xl font-bold text-emerald-800 flex items-center justify-center">
@@ -204,16 +289,27 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
         {step === "plan" && (
           <div className="p-6 bg-emerald-50 rounded-lg border border-emerald-200 shadow-sm">
             <h3 className="text-xl font-semibold text-emerald-800 mb-4 text-center">Select Your Budget Plan</h3>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-6 max-w-2xl mx-auto">
               {plans.map(plan => (
                 <button
                   key={plan.id}
                   onClick={() => handlePlanSelect(plan)}
-                  className={`bg-gradient-to-r from-${plan.color}-500 to-${plan.color}-600 hover:from-${plan.color}-600 hover:to-${plan.color}-700 text-white p-6 rounded-xl transition-all duration-200 transform hover:-translate-y-1 hover:shadow-lg`}
+                  className={`bg-white border-2 border-${plan.color}-100 hover:border-${plan.color}-500 p-6 rounded-2xl transition-all duration-300 transform hover:-translate-y-1 hover:shadow-2xl text-left flex flex-col md:flex-row gap-6 group`}
                 >
-                  <div className="text-center">
-                    <div className="text-2xl font-bold mb-2">{plan.ratio.join(":")}</div>
-                    <div className="text-sm opacity-90">{plan.names.join(" • ")}</div>
+                  <div className={`flex-shrink-0 w-full md:w-32 h-32 rounded-xl bg-gradient-to-br from-${plan.color}-400 to-${plan.color}-600 flex flex-col items-center justify-center text-white shadow-lg group-hover:scale-105 transition-transform`}>
+                    <div className="text-xl font-black">{plan.ratio.join(":")}</div>
+                    <div className="text-[10px] uppercase tracking-tighter font-bold opacity-80">Needs:Wants:Savings</div>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className={`text-xl font-bold text-${plan.color}-900 mb-2 flex justify-between items-center`}>
+                      {plan.title}
+                      <span className={`text-[10px] px-2 py-1 bg-${plan.color}-50 text-${plan.color}-600 rounded-full uppercase`}>
+                        {plan.id === 2 ? 'Recommended' : 'Strategic'}
+                      </span>
+                    </h4>
+                    <p className="text-sm text-emerald-700/80 leading-relaxed font-medium">
+                      {plan.description}
+                    </p>
                   </div>
                 </button>
               ))}
@@ -236,7 +332,7 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
                   Enter Total Budget
                 </h3>
                 {renderNumberPad()}
-                
+
                 {parseFloat(totalBudget) > 0 && (
                   <div className="mt-4 space-y-2">
                     <button
@@ -245,9 +341,8 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
                         handleButtonAnimation('save');
                       }}
                       disabled={loading}
-                      className={`w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5 ${
-                        loading ? 'opacity-50 cursor-not-allowed' : ''
-                      } ${activeButton === 'save' ? 'scale-95' : ''}`}
+                      className={`w-full py-3 px-4 bg-gradient-to-r from-emerald-600 to-emerald-700 text-white rounded-lg hover:from-emerald-700 hover:to-emerald-800 transition-all font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5 ${loading ? 'opacity-50 cursor-not-allowed' : ''
+                        } ${activeButton === 'save' ? 'scale-95' : ''}`}
                     >
                       {loading ? 'Saving...' : 'Save Budget'}
                     </button>
@@ -256,9 +351,8 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
                         downloadText();
                         handleButtonAnimation('download');
                       }}
-                      className={`w-full py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center ${
-                        activeButton === 'download' ? 'scale-95' : ''
-                      }`}
+                      className={`w-full py-3 px-4 bg-gradient-to-r from-amber-500 to-amber-600 text-white rounded-lg hover:from-amber-600 hover:to-amber-700 transition-all font-medium shadow-md hover:shadow-lg transform hover:-translate-y-0.5 flex items-center justify-center ${activeButton === 'download' ? 'scale-95' : ''
+                        }`}
                     >
                       <FaDownload className="mr-2 w-4 h-4" />
                       Download Report
@@ -274,7 +368,7 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
                     <FaChartPie className="mr-2 text-amber-600" />
                     Budget Breakdown
                   </h3>
-                  
+
                   {/* Pie Chart Visualization */}
                   <div className="mb-6 flex justify-center">
                     <div className="relative">
@@ -291,20 +385,20 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
                               const largeArcFlag = angle > 180 ? 1 : 0;
                               const pathData = `M 50 50 L ${x1} ${y1} A 40 40 0 ${largeArcFlag} 1 ${x2} ${y2} Z`;
                               currentAngle += angle;
-                              
+
                               return (
                                 <path
                                   key={index}
                                   d={pathData}
-                                  fill={`rgb(${cat.color === 'emerald-500' ? '16 185 129' : 
-                                              cat.color === 'green-500' ? '34 197 94' :
-                                              cat.color === 'teal-500' ? '20 184 166' :
-                                              cat.color === 'amber-500' ? '245 158 11' :
-                                              cat.color === 'yellow-500' ? '234 179 8' :
-                                              cat.color === 'orange-500' ? '249 115 22' :
+                                  fill={`rgb(${cat.color === 'emerald-500' ? '16 185 129' :
+                                    cat.color === 'green-500' ? '34 197 94' :
+                                      cat.color === 'teal-500' ? '20 184 166' :
+                                        cat.color === 'amber-500' ? '245 158 11' :
+                                          cat.color === 'yellow-500' ? '234 179 8' :
+                                            cat.color === 'orange-500' ? '249 115 22' :
                                               cat.color === 'purple-500' ? '168 85 247' :
-                                              cat.color === 'indigo-500' ? '99 102 241' :
-                                              cat.color === 'pink-500' ? '236 72 153' : '107 114 128'})`}
+                                                cat.color === 'indigo-500' ? '99 102 241' :
+                                                  cat.color === 'pink-500' ? '236 72 153' : '107 114 128'})`}
                                   className="hover:opacity-80 transition-opacity"
                                 />
                               );
@@ -328,15 +422,15 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
                         <div className="flex items-center justify-between">
                           <div className="flex items-center">
                             <div className={`w-4 h-4 rounded-full mr-3`} style={{
-                              backgroundColor: `rgb(${cat.color === 'emerald-500' ? '16 185 129' : 
-                                                    cat.color === 'green-500' ? '34 197 94' :
-                                                    cat.color === 'teal-500' ? '20 184 166' :
-                                                    cat.color === 'amber-500' ? '245 158 11' :
-                                                    cat.color === 'yellow-500' ? '234 179 8' :
-                                                    cat.color === 'orange-500' ? '249 115 22' :
-                                                    cat.color === 'purple-500' ? '168 85 247' :
-                                                    cat.color === 'indigo-500' ? '99 102 241' :
-                                                    cat.color === 'pink-500' ? '236 72 153' : '107 114 128'})`
+                              backgroundColor: `rgb(${cat.color === 'emerald-500' ? '16 185 129' :
+                                cat.color === 'green-500' ? '34 197 94' :
+                                  cat.color === 'teal-500' ? '20 184 166' :
+                                    cat.color === 'amber-500' ? '245 158 11' :
+                                      cat.color === 'yellow-500' ? '234 179 8' :
+                                        cat.color === 'orange-500' ? '249 115 22' :
+                                          cat.color === 'purple-500' ? '168 85 247' :
+                                            cat.color === 'indigo-500' ? '99 102 241' :
+                                              cat.color === 'pink-500' ? '236 72 153' : '107 114 128'})`
                             }} />
                             <span className="font-medium text-emerald-800">{cat.name}</span>
                           </div>
@@ -381,6 +475,61 @@ ${amounts.map(cat => `${cat.name}: ${cat.percentage.toFixed(1)}% - ₹${cat.amou
       {/* Animated circles in background */}
       <div className="absolute -bottom-20 -left-20 w-40 h-40 rounded-full bg-amber-200 opacity-30 animate-pulse"></div>
       <div className="absolute -top-20 -right-20 w-40 h-40 rounded-full bg-emerald-200 opacity-30 animate-pulse delay-1000"></div>
+
+      {/* Custom Ratio Modal */}
+      {showCustomModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white/95 backdrop-blur-md rounded-2xl border border-emerald-100 shadow-2xl p-8 max-w-sm w-full transform animate-scale-up">
+            <h3 className="text-xl font-bold text-emerald-900 mb-6 text-center">Custom Expert Ratio</h3>
+
+            <div className="space-y-4 mb-8">
+              <div>
+                <label className="block text-xs font-bold text-emerald-700 uppercase mb-1">Needs (%)</label>
+                <input
+                  type="number"
+                  value={customRatios.needs}
+                  onChange={(e) => handleRatioChange("needs", e.target.value)}
+                  className="w-full p-3 bg-emerald-50 border border-emerald-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-800"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-emerald-700 uppercase mb-1">Wants (%)</label>
+                <input
+                  type="number"
+                  value={customRatios.wants}
+                  onChange={(e) => handleRatioChange("wants", e.target.value)}
+                  className="w-full p-3 bg-emerald-50 border border-emerald-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-800"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-emerald-700 uppercase mb-1">Savings (%)</label>
+                <input
+                  type="number"
+                  value={customRatios.savings}
+                  onChange={(e) => handleRatioChange("savings", e.target.value)}
+                  className="w-full p-3 bg-emerald-50 border border-emerald-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500 font-bold text-emerald-800"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <button
+                onClick={() => setShowCustomModal(false)}
+                className="px-6 py-3 bg-emerald-50 text-emerald-700 font-bold rounded-xl hover:bg-emerald-100 transition-all"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCustomPlanApply}
+                disabled={Number(customRatios.needs) + Number(customRatios.wants) + Number(customRatios.savings) !== 100}
+                className="px-6 py-3 bg-gradient-to-r from-emerald-500 to-emerald-700 text-white font-bold rounded-xl shadow-lg hover:from-emerald-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -40,8 +40,10 @@ function Dashboard({ user }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [selectedMetric, setSelectedMetric] = useState("combined");
+  const [timeframe, setTimeframe] = useState("monthly");
+  const [allTransactions, setAllTransactions] = useState([]);
 
-  // Fetch and aggregate data by year from Firestore
+  // Fetch all transactions from Firestore
   useEffect(() => {
     const fetchData = async () => {
       if (!user || !user.uid) {
@@ -58,56 +60,13 @@ function Dashboard({ user }) {
         if (docSnap.exists()) {
           const data = docSnap.data();
           const transactions = data.transactions || [];
-          
-          // Group by year and calculate cumulative balance
-          const yearlyData = transactions.reduce((acc, transaction) => {
-            if (!transaction.date) return acc;
-            
-            const year = new Date(transaction.date).getFullYear().toString();
-            if (!acc[year]) {
-              acc[year] = { income: 0, expense: 0, balance: 0 };
-            }
-            
-            if (transaction.type === "Income") {
-              acc[year].income += transaction.amount || 0;
-            } else if (transaction.type === "Expense") {
-              acc[year].expense += transaction.amount || 0;
-            }
-            
-            return acc;
-          }, {});
-
-          // Sort years and calculate cumulative balance
-          const sortedYears = Object.keys(yearlyData).sort((a, b) => parseInt(a) - parseInt(b));
-          let cumulativeBalance = 0;
-          
-          const processedData = sortedYears.map(year => {
-            const yearData = yearlyData[year];
-            cumulativeBalance += (yearData.income - yearData.expense);
-            return {
-              year,
-              income: yearData.income,
-              expense: yearData.expense,
-              balance: cumulativeBalance
-            };
-          });
-
-          setLabels(processedData.map(d => d.year));
-          setBalanceData(processedData.map(d => d.balance));
-          setIncomeData(processedData.map(d => d.income));
-          setExpenseData(processedData.map(d => d.expense));
-
+          setAllTransactions(transactions);
         } else {
-          // Initialize with current year if no data exists
-          const currentYear = new Date().getFullYear().toString();
-          setLabels([currentYear]);
-          setBalanceData([0]);
-          setIncomeData([0]);
-          setExpenseData([0]);
+          setAllTransactions([]);
         }
       } catch (err) {
-        setError("Failed to load dashboard data: " + err.message);
-        console.error("Dashboard data error:", err);
+        setError("Failed to load transactions: " + err.message);
+        console.error("Dashboard fetch error:", err);
       } finally {
         setLoading(false);
       }
@@ -115,6 +74,132 @@ function Dashboard({ user }) {
 
     fetchData();
   }, [user]);
+
+  // Aggregate data whenever transactions or timeframe changes
+  useEffect(() => {
+    if (!allTransactions.length) {
+      setLabels([]);
+      setBalanceData([]);
+      setIncomeData([]);
+      setExpenseData([]);
+      return;
+    }
+
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    let grouped = {};
+    let labelsArr = [];
+
+    const getWeekKey = (date) => {
+      const d = new Date(date);
+      d.setHours(0, 0, 0, 0);
+      const day = d.getDay();
+      const diff = d.getDate() - day;
+      const startOfWeek = new Date(d.setDate(diff));
+      return `${startOfWeek.getFullYear()}-${String(startOfWeek.getMonth() + 1).padStart(2, '0')}-${String(startOfWeek.getDate()).padStart(2, '0')}`;
+    };
+
+    const getDayKey = (date) => {
+      const d = new Date(date);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+
+    if (timeframe === "daily") {
+      for (let i = 13; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i);
+        const key = getDayKey(d);
+        const label = d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+        grouped[key] = { income: 0, expense: 0, label };
+        labelsArr.push(key);
+      }
+    } else if (timeframe === "weekly") {
+      for (let i = 7; i >= 0; i--) {
+        const d = new Date(now);
+        d.setDate(now.getDate() - i * 7);
+        const key = getWeekKey(d);
+        const startOfWeek = new Date(key);
+        const label = `Wk ${startOfWeek.toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}`;
+        grouped[key] = { income: 0, expense: 0, label };
+        labelsArr.push(key);
+      }
+    } else if (timeframe === "monthly") {
+      for (let i = 11; i >= 0; i--) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        const label = d.toLocaleDateString('en-IN', { month: 'short', year: '2-digit' });
+        grouped[key] = { income: 0, expense: 0, label };
+        labelsArr.push(key);
+      }
+    } else if (timeframe === "yearly") {
+      const years = [...new Set(allTransactions.map(t => new Date(t.date).getFullYear()))].sort((a, b) => a - b);
+      if (!years.includes(now.getFullYear())) years.push(now.getFullYear());
+      years.sort((a, b) => a - b).forEach(year => {
+        const key = year.toString();
+        grouped[key] = { income: 0, expense: 0, label: key };
+        labelsArr.push(key);
+      });
+    }
+
+    allTransactions.forEach(t => {
+      if (!t.date) return;
+      const d = new Date(t.date);
+      let key;
+      if (timeframe === "daily") key = getDayKey(d);
+      else if (timeframe === "weekly") key = getWeekKey(d);
+      else if (timeframe === "monthly") key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      else if (timeframe === "yearly") key = d.getFullYear().toString();
+
+      if (grouped[key]) {
+        if (t.type === "Income") grouped[key].income += (t.amount || 0);
+        else if (t.type === "Expense") grouped[key].expense += (t.amount || 0);
+      }
+    });
+
+    const incomeArr = labelsArr.map(k => grouped[k].income);
+    const expenseArr = labelsArr.map(k => grouped[k].expense);
+
+    // Balance calculation
+    const sortedAll = [...allTransactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+    let currentBalanceTotal = 0;
+    const balancePoints = {};
+
+    sortedAll.forEach(t => {
+      if (!t.date) return;
+      if (t.type === "Income") currentBalanceTotal += (t.amount || 0);
+      else currentBalanceTotal -= (t.amount || 0);
+
+      let k;
+      const d = new Date(t.date);
+      if (timeframe === "daily") k = getDayKey(d);
+      else if (timeframe === "weekly") k = getWeekKey(d);
+      else if (timeframe === "monthly") k = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      else if (timeframe === "yearly") k = d.getFullYear().toString();
+
+      balancePoints[k] = currentBalanceTotal;
+    });
+
+    let lastKnownBalance = 0;
+    if (labelsArr.length > 0) {
+      const firstPeriodDate = new Date(labelsArr[0]);
+      sortedAll.forEach(t => {
+        if (new Date(t.date) < firstPeriodDate) {
+          if (t.type === "Income") lastKnownBalance += (t.amount || 0);
+          else lastKnownBalance -= (t.amount || 0);
+        }
+      });
+    }
+
+    const balanceArr = labelsArr.map(k => {
+      if (balancePoints[k] !== undefined) lastKnownBalance = balancePoints[k];
+      return lastKnownBalance;
+    });
+
+    setLabels(labelsArr.map(k => grouped[k].label));
+    setIncomeData(incomeArr);
+    setExpenseData(expenseArr);
+    setBalanceData(balanceArr);
+  }, [allTransactions, timeframe]);
 
   const totalIncome = incomeData.reduce((a, b) => a + b, 0);
   const totalExpense = expenseData.reduce((a, b) => a + b, 0);
@@ -163,7 +248,7 @@ function Dashboard({ user }) {
               strokeWidth="1"
             />
           ))}
-          
+
           {/* Horizontal grid lines */}
           {[0, 0.25, 0.5, 0.75, 1].map((ratio, index) => (
             <line
@@ -190,24 +275,28 @@ function Dashboard({ user }) {
                 fill="#6b7280"
                 fontSize="10"
               >
-                {value >= 1000 ? `₹${(value/1000).toFixed(0)}k` : `₹${value}`}
+                {value >= 1000 ? `₹${(value / 1000).toFixed(0)}k` : `₹${value}`}
               </text>
             );
           })}
 
           {/* X-axis labels */}
-          {labels.map((label, index) => (
-            <text
-              key={`x-label-${index}`}
-              x={scaleX(index)}
-              y={graphHeight - padding + 15}
-              textAnchor="middle"
-              fill="#6b7280"
-              fontSize="10"
-            >
-              {label}
-            </text>
-          ))}
+          {labels.map((label, index) => {
+            // Only show alternate labels if there are more than 8
+            if (labels.length > 8 && index % 2 !== 0 && timeframe === "daily") return null;
+            return (
+              <text
+                key={`x-label-${index}`}
+                x={scaleX(index)}
+                y={graphHeight - padding + 15}
+                textAnchor="middle"
+                fill="#6b7280"
+                fontSize="10"
+              >
+                {label}
+              </text>
+            );
+          })}
 
           {/* Data Lines */}
           {selectedMetric === "combined" && (
@@ -217,7 +306,7 @@ function Dashboard({ user }) {
                 fill="none"
                 stroke="#10b981"
                 strokeWidth="3"
-                points={balanceData.map((value, index) => 
+                points={balanceData.map((value, index) =>
                   `${scaleX(index)},${scaleY(value)}`
                 ).join(' ')}
               />
@@ -227,7 +316,7 @@ function Dashboard({ user }) {
                 stroke="#3b82f6"
                 strokeWidth="2"
                 strokeDasharray="4,2"
-                points={incomeData.map((value, index) => 
+                points={incomeData.map((value, index) =>
                   `${scaleX(index)},${scaleY(value)}`
                 ).join(' ')}
               />
@@ -237,7 +326,7 @@ function Dashboard({ user }) {
                 stroke="#ef4444"
                 strokeWidth="2"
                 strokeDasharray="4,2"
-                points={expenseData.map((value, index) => 
+                points={expenseData.map((value, index) =>
                   `${scaleX(index)},${scaleY(value)}`
                 ).join(' ')}
               />
@@ -249,7 +338,7 @@ function Dashboard({ user }) {
               fill="none"
               stroke="#3b82f6"
               strokeWidth="3"
-              points={incomeData.map((value, index) => 
+              points={incomeData.map((value, index) =>
                 `${scaleX(index)},${scaleY(value)}`
               ).join(' ')}
             />
@@ -260,14 +349,14 @@ function Dashboard({ user }) {
               fill="none"
               stroke="#ef4444"
               strokeWidth="3"
-              points={expenseData.map((value, index) => 
+              points={expenseData.map((value, index) =>
                 `${scaleX(index)},${scaleY(value)}`
               ).join(' ')}
             />
           )}
 
           {/* Data Points */}
-          {(selectedMetric === "combined" ? 
+          {(selectedMetric === "combined" ?
             [...balanceData, ...incomeData, ...expenseData] :
             selectedMetric === "income" ? incomeData : expenseData
           ).map((value, index) => {
@@ -278,9 +367,9 @@ function Dashboard({ user }) {
                 cx={scaleX(index)}
                 cy={scaleY(value)}
                 r="4"
-                fill={selectedMetric === "combined" ? 
-                  (index < balanceData.length ? "#10b981" : 
-                   index < balanceData.length + incomeData.length ? "#3b82f6" : "#ef4444") :
+                fill={selectedMetric === "combined" ?
+                  (index < balanceData.length ? "#10b981" :
+                    index < balanceData.length + incomeData.length ? "#3b82f6" : "#ef4444") :
                   selectedMetric === "income" ? "#3b82f6" : "#ef4444"}
                 stroke="white"
                 strokeWidth="2"
@@ -326,12 +415,10 @@ function Dashboard({ user }) {
             </>
           ) : (
             <div className="flex items-center gap-1">
-              <div className={`w-3 h-1 rounded-full ${
-                selectedMetric === "income" ? "bg-blue-500" : "bg-red-500"
-              }`}></div>
-              <span className={`font-medium ${
-                selectedMetric === "income" ? "text-blue-700" : "text-red-700"
-              }`}>
+              <div className={`w-3 h-1 rounded-full ${selectedMetric === "income" ? "bg-blue-500" : "bg-red-500"
+                }`}></div>
+              <span className={`font-medium ${selectedMetric === "income" ? "text-blue-700" : "text-red-700"
+                }`}>
                 {selectedMetric === "income" ? "Income" : "Expense"}
               </span>
             </div>
@@ -374,7 +461,7 @@ function Dashboard({ user }) {
               transform="rotate(-90 100 100)"
             />
           )}
-          
+
           {/* Expense Segment */}
           {totalExpense > 0 && (
             <circle
@@ -389,7 +476,7 @@ function Dashboard({ user }) {
               transform="rotate(-90 100 100)"
             />
           )}
-          
+
           {/* Center Text */}
           <text x="100" y="100" textAnchor="middle" dominantBaseline="middle" fill="#374151" fontSize="14" fontWeight="bold">
             Total
@@ -471,9 +558,8 @@ function Dashboard({ user }) {
                   </div>
                 </div>
                 {balanceChange !== 0 && (
-                  <div className={`flex items-center text-sm font-medium px-2 py-1 rounded-full ${
-                    balanceChange > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                  }`}>
+                  <div className={`flex items-center text-sm font-medium px-2 py-1 rounded-full ${balanceChange > 0 ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
                     {balanceChange > 0 ? <FaArrowUp className="mr-1" /> : <FaArrowDown className="mr-1" />}
                     ₹{Math.abs(balanceChange).toLocaleString("en-IN")}
                   </div>
@@ -519,29 +605,51 @@ function Dashboard({ user }) {
                 <FaChartLine className="mr-3 text-amber-600" />
                 Financial Trends Analysis
               </h3>
-              
-              <div className="flex gap-2">
-                {[
-                  { key: "combined", label: "All Metrics", icon: <FaEquals className="w-4 h-4" /> },
-                  { key: "income", label: "Income", icon: <FaArrowUp className="w-4 h-4" /> },
-                  { key: "expense", label: "Expenses", icon: <FaArrowDown className="w-4 h-4" /> }
-                ].map(({ key, label, icon }) => (
-                  <button
-                    key={key}
-                    onClick={() => setSelectedMetric(key)}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${
-                      selectedMetric === key
+
+              <div className="flex flex-wrap gap-4 items-center">
+                {/* Timeframe Toggle */}
+                <div className="flex bg-emerald-100 rounded-xl p-1 shadow-inner">
+                  {[
+                    { key: "daily", label: "Daily" },
+                    { key: "weekly", label: "Weekly" },
+                    { key: "monthly", label: "Monthly" },
+                    { key: "yearly", label: "Yearly" }
+                  ].map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setTimeframe(key)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${timeframe === key
+                        ? "bg-white text-emerald-800 shadow-sm scale-105"
+                        : "text-emerald-600 hover:text-emerald-800"
+                        }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex gap-2">
+                  {[
+                    { key: "combined", label: "All", icon: <FaEquals className="w-3 h-3" /> },
+                    { key: "income", label: "In", icon: <FaArrowUp className="w-3 h-3" /> },
+                    { key: "expense", label: "Out", icon: <FaArrowDown className="w-3 h-3" /> }
+                  ].map(({ key, icon }) => (
+                    <button
+                      key={key}
+                      onClick={() => setSelectedMetric(key)}
+                      title={key.charAt(0).toUpperCase() + key.slice(1)}
+                      className={`p-2 rounded-xl text-sm font-medium transition-all flex items-center gap-2 ${selectedMetric === key
                         ? "bg-gradient-to-r from-emerald-600 to-emerald-700 text-white shadow-lg"
                         : "bg-emerald-100 text-emerald-700 hover:bg-emerald-200"
-                    }`}
-                  >
-                    {icon}
-                    {label}
-                  </button>
-                ))}
+                        }`}
+                    >
+                      {icon}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
-            
+
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               <div>
                 <h4 className="text-lg font-semibold text-emerald-800 mb-4">Yearly Trends</h4>
@@ -560,7 +668,7 @@ function Dashboard({ user }) {
               <FaCalculator className="mr-3 text-amber-600" />
               Financial Health Summary
             </h3>
-            
+
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Key Metrics */}
               <div className="space-y-4">

@@ -10,7 +10,10 @@ import {
   FaExclamationTriangle,
   FaCheckCircle,
   FaClock,
-  FaChartLine
+  FaChartLine,
+  FaTrash,
+  FaSearch,
+  FaChevronDown
 } from "react-icons/fa";
 
 function Transaction({ user }) {
@@ -24,9 +27,32 @@ function Transaction({ user }) {
   const [stagedType, setStagedType] = useState(null);
   const [showStep2, setShowStep2] = useState(false);
   const [customCategoryName, setCustomCategoryName] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [transactionToDeleteIndex, setTransactionToDeleteIndex] = useState(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const dropdownRef = React.useRef(null);
 
   const INCOME_CATEGORIES = ["Income-Allowance", "Rent Gain", "Gifts", "Other"];
-  const EXPENSE_CATEGORIES = ["Food", "Travel", "Health", "Investment", "Other"];
+  const EXPENSE_CATEGORIES = [
+    "Other",
+    "Housing",
+    "Utilities",
+    "Groceries",
+    "Transportation",
+    "Insurance",
+    "Healthcare",
+    "Minimum debt payments",
+    "Childcare",
+    "Dining out",
+    "Entertainment",
+    "Hobbies",
+    "Clothing",
+    "Travel/vacations",
+    "Personal care",
+    "Gifts/subscriptions",
+    "Investments"
+  ];
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,6 +85,16 @@ function Transaction({ user }) {
 
     fetchData();
   }, [user]);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const handleAddIncome = () => {
     if (!amount || isNaN(amount) || Number(amount) <= 0) {
@@ -125,9 +161,48 @@ function Transaction({ user }) {
       setShowStep2(false);
       setCustomCategoryName("");
     } catch (err) {
-      console.error("Confirm transaction error:", err);
-      setError("Failed to process transaction: " + err.message);
+      console.error("Delete transaction error:", err);
+      setError("Failed to delete transaction: " + err.message);
     }
+  };
+
+  const confirmDelete = async () => {
+    if (transactionToDeleteIndex === null) return;
+
+    try {
+      setError(null);
+      const index = transactionToDeleteIndex;
+      const transactionToDelete = transactions[index];
+      const userDocRef = doc(db, "transactions", user.uid);
+      
+      // Calculate new total
+      const amountNum = Number(transactionToDelete.amount);
+      const newTotal = transactionToDelete.type === "Income" 
+        ? totalAmount - amountNum 
+        : totalAmount + amountNum;
+
+      // Filter out the transaction to delete
+      const updatedTransactions = transactions.filter((_, i) => i !== index);
+
+      await updateDoc(userDocRef, {
+        totalAmount: newTotal,
+        transactions: updatedTransactions
+      });
+
+      setTotalAmount(newTotal);
+      setTransactions(updatedTransactions);
+      setShowDeleteModal(false);
+      setTransactionToDeleteIndex(null);
+    } catch (err) {
+      console.error("Confirm delete error:", err);
+      setError("Failed to delete transaction: " + err.message);
+      setShowDeleteModal(false);
+    }
+  };
+
+  const handleDeleteTransaction = (index) => {
+    setTransactionToDeleteIndex(index);
+    setShowDeleteModal(true);
   };
 
   if (loading) {
@@ -183,7 +258,7 @@ function Transaction({ user }) {
         </div>
 
         {/* Input Section - Step 1 */}
-        <div className="bg-emerald-100 p-6 rounded-2xl border border-emerald-200 mb-6 shadow-md transition-all duration-500">
+        <div className="bg-emerald-100 p-6 rounded-2xl border border-emerald-200 mb-6 shadow-md transition-all duration-500 relative z-20">
           {!showStep2 ? (
             <div className="flex flex-col lg:flex-row gap-6 items-center">
               <div className="flex-1 w-full">
@@ -248,19 +323,70 @@ function Transaction({ user }) {
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
+                    <div className="space-y-2 relative" ref={dropdownRef}>
                       <label className="block text-xs font-bold text-emerald-700 uppercase tracking-wider">Select Category</label>
-                      <select
-                        value={selectedCategory}
-                        onChange={(e) => setSelectedCategory(e.target.value)}
-                        className="w-full p-4 bg-white border-2 border-emerald-200 rounded-xl text-emerald-800 focus:outline-none focus:ring-2 focus:ring-amber-500 font-medium transition-all appearance-none cursor-pointer"
-                        style={{ backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%2224%22%20height%3D%2224%22%20viewBox%3D%220%200%2024%22%2024%22%20fill%3D%22none%22%20stroke%3D%22%23047857%22%20stroke-width%3D%222%22%20stroke-linecap%3D%22round%22%20stroke-linejoin%3D%22round%22%3E%3Cpolyline%20points%3D%226%209%2012%2015%2018%209%22%3E%3C%2Fpolyline%3E%3C%2Fsvg%3E")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 1rem center', paddingRight: '2.5rem' }}
+                      
+                      {/* Custom Dropdown Trigger */}
+                      <div 
+                        onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                        className={`w-full p-4 bg-white border-2 border-emerald-200 rounded-xl text-emerald-800 focus:outline-none flex justify-between items-center cursor-pointer transition-all ${isDropdownOpen ? 'ring-2 ring-amber-500 border-transparent shadow-lg' : 'hover:border-emerald-300'}`}
                       >
-                        <option value="" disabled>-- Choose a category --</option>
-                        {(stagedType === 'Income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES).map(cat => (
-                          <option key={cat} value={cat}>{cat}</option>
-                        ))}
-                      </select>
+                        <span className={`font-medium ${!selectedCategory ? 'text-emerald-500' : 'text-emerald-800'}`}>
+                          {selectedCategory || "-- Choose a category --"}
+                        </span>
+                        <FaChevronDown className={`text-emerald-600 transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`} />
+                      </div>
+
+                      {/* Dropdown Menu */}
+                      {isDropdownOpen && (
+                        <div className="absolute z-50 mt-2 w-full bg-white/90 backdrop-blur-md border-2 border-emerald-100 rounded-xl shadow-2xl overflow-hidden animate-scale-up">
+                          {/* Search Input */}
+                          <div className="p-3 border-b border-emerald-50">
+                            <div className="relative">
+                              <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-emerald-400 text-sm" />
+                              <input 
+                                type="text"
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                placeholder="Search categories..."
+                                className="w-full pl-9 pr-3 py-2 bg-emerald-50/50 border border-emerald-100 rounded-lg text-sm text-emerald-800 focus:outline-none focus:ring-1 focus:ring-amber-400"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </div>
+                          </div>
+
+                          {/* Options List */}
+                          <div className="max-h-64 overflow-y-auto custom-scrollbar">
+                            {(stagedType === 'Income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES)
+                              .filter(cat => cat.toLowerCase().includes(searchTerm.toLowerCase()))
+                              .map(cat => (
+                                <div 
+                                  key={cat}
+                                  onClick={() => {
+                                    setSelectedCategory(cat);
+                                    setIsDropdownOpen(false);
+                                    setSearchTerm("");
+                                  }}
+                                  className={`px-4 py-3 cursor-pointer transition-colors flex justify-between items-center ${
+                                    selectedCategory === cat 
+                                      ? 'bg-emerald-100 text-emerald-900 font-bold' 
+                                      : 'hover:bg-emerald-50 text-emerald-700 hover:text-emerald-900'
+                                  }`}
+                                >
+                                  <span>{cat}</span>
+                                  {selectedCategory === cat && <FaCheckCircle className="text-emerald-600 text-xs" />}
+                                </div>
+                              ))}
+                            {(stagedType === 'Income' ? INCOME_CATEGORIES : EXPENSE_CATEGORIES)
+                              .filter(cat => cat.toLowerCase().includes(searchTerm.toLowerCase()))
+                              .length === 0 && (
+                              <div className="p-4 text-center text-emerald-400 text-sm italic">
+                                No categories found
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
 
                     {selectedCategory === "Other" && (
@@ -404,6 +530,13 @@ function Transaction({ user }) {
                         })}
                       </p>
                     </div>
+                    <button
+                      onClick={() => handleDeleteTransaction(index)}
+                      className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-full transition-all duration-300 opacity-0 group-hover:opacity-100 focus:opacity-100"
+                      title="Delete Transaction"
+                    >
+                      <FaTrash className="text-sm" />
+                    </button>
                   </div>
                 </div>
               ))}
@@ -414,6 +547,38 @@ function Transaction({ user }) {
           )}
         </div>
       </div>
+
+      {/* Custom Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white/90 backdrop-blur-md rounded-2xl border border-emerald-100 shadow-2xl p-8 max-w-sm w-full transform animate-scale-up">
+            <div className="text-center">
+              <div className="bg-red-100 p-4 rounded-full w-16 h-16 flex items-center justify-center mx-auto mb-6">
+                <FaTrash className="text-red-500 text-2xl" />
+              </div>
+              <h3 className="text-xl font-bold text-emerald-900 mb-2">Delete Transaction?</h3>
+              <p className="text-emerald-700 mb-8 leading-relaxed">
+                This action will permanently remove this record and update your total balance.
+              </p>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={() => setShowDeleteModal(false)}
+                  className="px-6 py-3 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold rounded-xl transition-all duration-300 transform hover:scale-[1.02]"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={confirmDelete}
+                  className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700 text-white font-bold rounded-xl shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
