@@ -84,6 +84,35 @@ function Home({ user }) {
         simulateUpcomingBills(validTransactions);
       }
 
+      // Fetch and display budget as upcoming bills if exists
+      try {
+        const budgetDocRef = doc(db, "budgets", user.uid);
+        const budgetDocSnap = await getDoc(budgetDocRef);
+        
+        if (budgetDocSnap.exists()) {
+          const budgetData = budgetDocSnap.data();
+          if (budgetData.categories && budgetData.categories.length > 0) {
+            // Convert budget categories to upcoming bills format
+            const budgetBills = budgetData.categories.slice(0, 3).map((cat, idx) => ({
+              id: `budget-${idx}`,
+              name: `Budget: ${cat.name}`,
+              amount: cat.amount,
+              dueDate: new Date().toISOString().split('T')[0],
+              isBudget: true
+            }));
+            
+            // Combine with transaction-based bills, but prioritize budget bills
+            setUpcomingBills(prevBills => {
+              const nonBudgetBills = prevBills.filter(b => !b.isBudget);
+              return [...budgetBills, ...nonBudgetBills].slice(0, 4);
+            });
+          }
+        }
+      } catch (budgetError) {
+        console.error("Error fetching budget:", budgetError);
+        // Continue without budget, it's optional
+      }
+
       setLoading(false);
       setRefreshing(false);
     } catch (err) {
@@ -258,6 +287,8 @@ function Home({ user }) {
     .filter(t => t.type === "Expense")
     .reduce((sum, t) => sum + t.amount, 0);
     
+  // Calculate balance from transactions instead of relying on stored totalAmount
+  const calculatedBalance = totalIncome - totalExpense;
   const netIncome = totalIncome - totalExpense;
   const savingsRate = totalIncome > 0 ? (netIncome / totalIncome * 100) : 0;
 
@@ -369,10 +400,10 @@ function Home({ user }) {
               <h3 className="text-lg font-semibold text-emerald-800">Current Balance</h3>
             </div>
             <div className="text-3xl font-bold text-emerald-800 mb-2">
-              ₹{totalAmount.toLocaleString("en-IN")}
+              ₹{calculatedBalance.toLocaleString("en-IN")}
             </div>
             <p className="text-emerald-600 text-sm">
-              {totalAmount > 0 ? "You're doing great!" : "Start adding income to begin"}
+              {calculatedBalance > 0 ? "You're doing great!" : "Start adding income to begin"}
             </p>
           </div>
 

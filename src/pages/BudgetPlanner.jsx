@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { FaCalculator, FaChartPie, FaDownload, FaPiggyBank, FaChartLine, FaPercent, FaDollarSign, FaUniversity, FaCreditCard, FaUtensils, FaMemory, FaBackspace } from "react-icons/fa";
+import { db, doc, setDoc } from "../firebase";
 
 function BudgetPlanner({ user }) {
   const [step, setStep] = useState("plan"); // "plan" or "amount"
@@ -75,14 +76,37 @@ function BudgetPlanner({ user }) {
       return;
     }
 
+    if (!user || !user.uid) {
+      setError("User not authenticated");
+      return;
+    }
+
     setLoading(true);
     try {
-      // Simulate save operation
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const budgetData = {
+        totalBudget: budget,
+        categories: calculateAmounts(),
+        plan: selectedPlan,
+        createdDate: new Date().toISOString(),
+        lastUpdated: new Date().toISOString()
+      };
+
+      // Save budget to Firestore under user's uid
+      await setDoc(doc(db, "budgets", user.uid), budgetData);
+
       setError(null);
-      alert("Budget saved successfully!");
+      alert("Budget saved successfully! Upcoming bills will update shortly.");
+      
+      // Reset form after successful save
+      setTimeout(() => {
+        setStep("plan");
+        setTotalBudget("");
+        setSelectedPlan(null);
+        setCategories([]);
+      }, 500);
     } catch (err) {
       setError("Failed to save budget: " + err.message);
+      console.error("Budget save error:", err);
     } finally {
       setLoading(false);
     }

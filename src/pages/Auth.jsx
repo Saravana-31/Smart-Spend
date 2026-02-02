@@ -9,7 +9,8 @@ import {
   updateProfile,
   db, 
   doc, 
-  setDoc 
+  setDoc,
+  getDoc
 } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
@@ -224,6 +225,20 @@ function Auth({ setUser }) {
       );
       
       const user = userCredential.user;
+
+      // Check if transactions document exists, only initialize if it doesn't
+      const transDocRef = doc(db, "transactions", user.uid);
+      const transDocSnap = await getDoc(transDocRef);
+      
+      if (!transDocSnap.exists()) {
+        // Document doesn't exist, create it with initial data
+        await setDoc(transDocRef, {
+          totalAmount: 0,
+          transactions: []
+        });
+      }
+      // If document exists, don't modify it - preserve all data
+
       setUser(user);
       navigate("/");
     } catch (error) {
