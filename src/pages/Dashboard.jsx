@@ -44,15 +44,15 @@ function Dashboard({ user }) {
   // Fetch and aggregate data by year from Firestore
   useEffect(() => {
     const fetchData = async () => {
-      if (!user || !user.email) {
-        setError("User not authenticated or email not available");
+      if (!user || !user.uid) {
+        setError("User not authenticated or uid not available");
         setLoading(false);
         return;
       }
 
       setLoading(true);
       try {
-        const userDocRef = doc(db, "transactions", user.email);
+        const userDocRef = doc(db, "transactions", user.uid);
         const docSnap = await getDoc(userDocRef);
 
         if (docSnap.exists()) {

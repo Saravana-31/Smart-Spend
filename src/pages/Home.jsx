@@ -60,7 +60,7 @@ function Home({ user }) {
 
   // Fetch user data from Firebase
   const fetchData = async () => {
-    if (!user || !user.email) {
+    if (!user || !user.uid) {
       setLoading(false);
       setRefreshing(false);
       return;
@@ -68,7 +68,7 @@ function Home({ user }) {
 
     try {
       // Fetch transactions
-      const transactionsDocRef = doc(db, "transactions", user.email);
+      const transactionsDocRef = doc(db, "transactions", user.uid);
       const transactionsDocSnap = await getDoc(transactionsDocRef);
 
       if (transactionsDocSnap.exists()) {

@@ -1,18 +1,43 @@
 // Import the functions you need from the SDKs you need
 import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, setPersistence, browserLocalPersistence } from "firebase/auth";
-import { getFirestore, doc, setDoc, getDoc, updateDoc, arrayUnion, serverTimestamp } from "firebase/firestore"; // Import Firestore functions
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut, 
+  setPersistence, 
+  browserLocalPersistence,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+  onAuthStateChanged
+} from "firebase/auth";
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  updateDoc, 
+  arrayUnion, 
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  deleteDoc
+} from "firebase/firestore"; // Import Firestore functions
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
-  apiKey: "AIzaSyAm-lJ_6vdSn28foMTZ8aUx98oLSDHbQ8w",
-  authDomain: "aismartspend.firebaseapp.com",
-  projectId: "aismartspend",
-  storageBucket: "aismartspend.firebasestorage.app",
-  messagingSenderId: "194893461491",
-  appId: "1:194893461491:web:fd122b32a191bbf0f6c486",
-  measurementId: "G-8WP35GHC8R"
+  apiKey: "AIzaSyCSY1pWG0mOHEMkxFEkNpo_dqBFUC4SDCU",
+  authDomain: "smartspend-ai-da2e6.firebaseapp.com",
+  projectId: "smartspend-ai-da2e6",
+  storageBucket: "smartspend-ai-da2e6.firebasestorage.app",
+  messagingSenderId: "566963864297",
+  appId: "1:566963864297:web:96ca0da1460e65591fa678",
+  measurementId: "G-6P7FE4YN4Z"
 };
 
 // Initialize Firebase
@@ -33,11 +58,21 @@ export {
   provider, 
   signInWithPopup, 
   signOut, 
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updateProfile,
+  onAuthStateChanged,
   db, 
   doc, 
   setDoc, 
   getDoc, 
   updateDoc, 
   arrayUnion, 
-  serverTimestamp 
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  deleteDoc
 };

@@ -11,9 +11,9 @@ function BudgetPlanner({ user }) {
   const [activeButton, setActiveButton] = useState(null);
 
   const plans = [
-    { id: 1, ratio: [3, 4, 3], names: ["Needs", "Essentials", "Savings"], color: "emerald" },
-    { id: 2, ratio: [2, 3, 5], names: ["Needs", "Essentials", "Savings"], color: "amber" },
-    { id: 3, ratio: [6, 2, 2], names: ["Needs", "Essentials", "Savings"], color: "emerald" },
+    { id: 1, ratio: [3, 4, 3], names: ["Wants", "Needs", "Savings"], color: "emerald" },
+    { id: 2, ratio: [2, 3, 5], names: ["Wants", "Needs", "Savings"], color: "amber" },
+    { id: 3, ratio: [6, 2, 2], names: ["Wants", "Needs", "Savings"], color: "emerald" },
   ];
 
   // Button animation handler

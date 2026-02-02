@@ -205,7 +205,7 @@ const BillScanner = ({ user, onClose, onSuccess }) => {
 
   // Save transaction to Firebase
   const saveTransaction = async () => {
-    if (!user || !user.email) {
+    if (!user || !user.uid) {
       setError('User not authenticated');
       return;
     }
@@ -218,7 +218,7 @@ const BillScanner = ({ user, onClose, onSuccess }) => {
 
     try {
       setIsProcessing(true);
-      const userDocRef = doc(db, "transactions", user.email);
+      const userDocRef = doc(db, "transactions", user.uid);
       
       // Get current data
       const docSnap = await getDoc(userDocRef);
