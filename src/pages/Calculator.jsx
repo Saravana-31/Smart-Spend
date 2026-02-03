@@ -9,6 +9,7 @@ function Calculator() {
   const [principal, setPrincipal] = useState("");
   const [rate, setRate] = useState("");
   const [time, setTime] = useState("");
+  
   const [investedFV, setInvestedFV] = useState("1000");
   const [rateFV, setRateFV] = useState("5");
   const [timeFV, setTimeFV] = useState("1");
@@ -21,7 +22,7 @@ function Calculator() {
     const activeField = document.activeElement.id;
     if (currentMode !== "basic") {
       switch (currentMode) {
-        case "simple":
+          case "simple":
         case "compound":
         case "emi":
           if (activeField === "principal") {
@@ -117,6 +118,7 @@ function Calculator() {
         setRate("");
         setTime("");
         break;
+      
       case "basic":
         try {
           const result = eval(expression);
@@ -161,6 +163,7 @@ function Calculator() {
             setTime((prev) => (prev.slice(0, -1) || ""));
           }
           break;
+        
         case "tip":
           if (activeField === "amount") {
             setAmount((prev) => (prev.slice(0, -1) || ""));
@@ -398,6 +401,7 @@ function Calculator() {
             </button>
           </div>
         );
+        
       case "basic":
         return (
           <div className="grid grid-cols-4 gap-2">
@@ -637,6 +641,7 @@ function Calculator() {
             { mode: "simple", label: "Simple Interest", icon: <FaPercent className="w-4 h-4 mr-1" /> },
             { mode: "compound", label: "Compound Interest", icon: <FaPercent className="w-4 h-4 mr-1" /> },
             { mode: "emi", label: "Loan EMI", icon: <FaCreditCard className="w-4 h-4 mr-1" /> },
+            
             { mode: "returns-fv", label: "Returns", icon: <FaChartLine className="w-4 h-4 mr-1" /> },
             { mode: "tip", label: "Tip Calculator", icon: <FaUtensils className="w-4 h-4 mr-1" /> },
           ].map(({ mode, label, icon }) => (
@@ -651,6 +656,7 @@ function Calculator() {
                 setTime("");
                 setAmount("");
                 setTipPercent("");
+                
                 setInvestedFV("1000");
                 setRateFV("5");
                 setTimeFV("1");
