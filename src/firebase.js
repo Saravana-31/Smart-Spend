@@ -12,7 +12,10 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
-  onAuthStateChanged
+  onAuthStateChanged,
+  fetchSignInMethodsForEmail,
+  sendEmailVerification,
+  applyActionCode
 } from "firebase/auth";
 import { 
   getFirestore, 
@@ -63,6 +66,9 @@ export {
   sendPasswordResetEmail,
   updateProfile,
   onAuthStateChanged,
+  fetchSignInMethodsForEmail,
+  sendEmailVerification,
+  applyActionCode,
   db, 
   doc, 
   setDoc, 
