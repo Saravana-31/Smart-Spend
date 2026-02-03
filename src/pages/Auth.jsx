@@ -7,10 +7,11 @@ import {
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   updateProfile,
+  fetchSignInMethodsForEmail,
+  sendEmailVerification,
   db, 
   doc, 
-  setDoc,
-  getDoc
+  setDoc 
 } from "../firebase";
 import { useNavigate } from "react-router-dom";
 import { FcGoogle } from "react-icons/fc";
@@ -40,8 +41,9 @@ function Auth({ setUser }) {
   };
 
   const validatePassword = (password) => {
-    // At least 6 characters
-    return password.length >= 6;
+    // Strong password: min 6 chars, upper, lower, number, special
+    const regex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    return regex.test(password);
   };
 
   const validateForm = () => {
@@ -61,7 +63,7 @@ function Auth({ setUser }) {
       if (!formData.password) {
         newErrors.password = "Password is required";
       } else if (!validatePassword(formData.password)) {
-        newErrors.password = "Password must be at least 6 characters";
+        newErrors.password = "Password must include uppercase, lowercase, number, and special character";
       }
 
       if (isSignUp && formData.password !== formData.confirmPassword) {
@@ -103,8 +105,6 @@ function Auth({ setUser }) {
     setSuccessMessage("");
   };
 
-  // Note: Google Sign-In available as alternative authentication method
-
   // Google Sign-In
   const handleGoogleSignIn = async () => {
     try {
@@ -112,7 +112,7 @@ function Auth({ setUser }) {
       const result = await signInWithPopup(auth, provider);
       const user = result.user;
 
-      // Save user data to Firestore using uid
+      // Save user data to Firestore
       await setDoc(doc(db, "users", user.uid), {
         uid: user.uid,
         displayName: user.displayName,
@@ -121,12 +121,6 @@ function Auth({ setUser }) {
         createdAt: new Date().toISOString(),
         budgetPreferences: {},
         financialGoals: [],
-      }, { merge: true });
-
-      // Initialize transactions document if it doesn't exist
-      await setDoc(doc(db, "transactions", user.uid), {
-        totalAmount: 0,
-        transactions: []
       }, { merge: true });
 
       setUser(user);
@@ -148,6 +142,18 @@ function Auth({ setUser }) {
       setLoading(true);
       setErrors({});
       
+      // Prevent duplicate sign-up if email already exists
+      const existingMethods = await fetchSignInMethodsForEmail(auth, formData.email);
+      if (existingMethods.length > 0) {
+        const isGoogleOnly = existingMethods.includes("google.com") && !existingMethods.includes("password");
+        const duplicateMessage = isGoogleOnly
+          ? "🔵 Google Sign-In Required\nThis email is already registered using Google Sign-In.\nPlease continue by signing in with Google."
+          : "This email is already registered. Please sign in instead.";
+        setErrors({ general: duplicateMessage });
+        setLoading(false);
+        return;
+      }
+
       // Create user with email and password
       const userCredential = await createUserWithEmailAndPassword(
         auth, 
@@ -169,33 +175,27 @@ function Auth({ setUser }) {
         email: formData.email,
         photoURL: null,
         createdAt: new Date().toISOString(),
+        emailVerified: false,
         budgetPreferences: {},
         financialGoals: [],
       });
 
-      // Initialize transactions document
-      await setDoc(doc(db, "transactions", user.uid), {
-        totalAmount: 0,
-        transactions: []
-      });
+      // Send email verification with continue URL to redirect back to our app
+      const actionCodeSettings = {
+        url: window.location.origin + '/verify-email',
+        handleCodeInApp: true
+      };
+      await sendEmailVerification(user, actionCodeSettings);
 
-      setUser({ ...user, displayName: formData.name });
-      navigate("/");
+      setSuccessMessage("✅ Account created! Verification email sent. Please check your inbox.");
+      setFormData({ name: "", email: "", password: "", confirmPassword: "" });
+      setIsSignIn(true);
+      navigate("/verify-email", { state: { email: formData.email, userId: user.uid, from: "/" } });
     } catch (error) {
       console.error("Sign-up error:", error);
       let errorMessage = "Failed to create account. Please try again.";
       
       if (error.code === "auth/email-already-in-use") {
-        errorMessage = "This email is already registered. Please sign in instead.";
-      } else if (error.code === "auth/weak-password") {
-        errorMessage = "Password is too weak. Please use a stronger password.";
-      } else if (error.code === "auth/invalid-email") {
-        errorMessage = "Invalid email address.";
-      } else if (error.code === "permission-denied") {
-        errorMessage = "Database permission denied. Please contact support.";
-      } else if (error.message?.includes("Missing or insufficient permissions")) {
-        errorMessage = "Database permission denied. Check Firestore rules.";
-      }      if (error.code === "auth/email-already-in-use") {
         errorMessage = "This email is already registered. Please sign in instead.";
       } else if (error.code === "auth/weak-password") {
         errorMessage = "Password is too weak. Please use a stronger password.";
@@ -226,18 +226,13 @@ function Auth({ setUser }) {
       
       const user = userCredential.user;
 
-      // Check if transactions document exists, only initialize if it doesn't
-      const transDocRef = doc(db, "transactions", user.uid);
-      const transDocSnap = await getDoc(transDocRef);
-      
-      if (!transDocSnap.exists()) {
-        // Document doesn't exist, create it with initial data
-        await setDoc(transDocRef, {
-          totalAmount: 0,
-          transactions: []
-        });
+      // Check if email is verified
+      if (!user.emailVerified) {
+        setErrors({ general: "📧 Please verify your email to access the app. Check your inbox for the verification link." });
+        navigate("/verify-email", { state: { email: user.email, userId: user.uid, from: "/" } });
+        setLoading(false);
+        return;
       }
-      // If document exists, don't modify it - preserve all data
 
       setUser(user);
       navigate("/");
@@ -245,14 +240,23 @@ function Auth({ setUser }) {
       console.error("Sign-in error:", error);
       let errorMessage = "Failed to sign in. Please check your credentials.";
       
-      if (error.code === "auth/user-not-found") {
-        errorMessage = "No account found with this email. Please sign up first.";
-      } else if (error.code === "auth/wrong-password") {
-        errorMessage = "Incorrect password. Please try again.";
-      } else if (error.code === "auth/invalid-email") {
+      if (error.code === "auth/invalid-email") {
         errorMessage = "Invalid email address.";
-      } else if (error.code === "auth/invalid-credential") {
-        errorMessage = "Invalid email or password. Please try again.";
+      } else if (error.code === "auth/user-not-found") {
+        errorMessage = "No account found with this email. Please sign up first.";
+      } else if (error.code === "auth/wrong-password" || error.code === "auth/invalid-credential") {
+        try {
+          const methods = await fetchSignInMethodsForEmail(auth, formData.email);
+          const isGoogleOnly = methods.includes("google.com") && !methods.includes("password");
+          if (isGoogleOnly) {
+            errorMessage = "🔵 Google Sign-In Required\nThis email is already registered using Google Sign-In.\nPlease continue by signing in with Google.";
+          } else {
+            errorMessage = "Invalid credentials. Please check your email and password.";
+          }
+        } catch (methodError) {
+          console.error("Fetch sign-in methods error:", methodError);
+          errorMessage = "Invalid credentials. Please check your email and password.";
+        }
       }
       
       setErrors({ general: errorMessage });
@@ -371,7 +375,7 @@ function Auth({ setUser }) {
         {/* Error Message */}
         {errors.general && (
           <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
-            <p className="text-red-600 text-sm">{errors.general}</p>
+            <p className="text-red-600 text-sm whitespace-pre-line">{errors.general}</p>
           </div>
         )}
 
